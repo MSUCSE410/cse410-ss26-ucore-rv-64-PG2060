@@ -6,7 +6,7 @@
 // Both the kernel and user programs use this header file.
 
 #define NFILE 100 // open files per system
-#define NINODE 50 // maximum number of active i-nodes
+#define NINODE 200 // maximum number of active i-nodes
 #define NDEV 10 // maximum major device number
 #define ROOTDEV 1 // device number of file system root disk
 #define MAXOPBLOCKS 10 // max # of blocks any FS op writes
@@ -44,13 +44,26 @@ struct superblock {
 // On-disk inode structure
 struct dinode {
 	short type; // File type
-	short pad[3];
+	short nlink; // number of hard links
+	short pad[2];
 	// LAB4: you can reduce size of pad array and add link count below,
 	//       or you can just regard a pad as link count.
 	//       But keep in mind that you'd better keep sizeof(dinode) unchanged
 	uint size; // Size of file (bytes)
 	uint addrs[NDIRECT + 1]; // Data block addresses
 };
+
+#define DIR 0x040000
+#define FILE_STAT 0x100000
+
+// gets used by sys_fstat
+typedef struct {
+	uint64 dev;
+	uint64 ino;
+	uint32 mode;
+	uint32 nlink;
+	uint64 pad[7];
+} Stat;
 
 // Inodes per block.
 #define IPB (BSIZE / sizeof(struct dinode))
@@ -92,4 +105,5 @@ int readi(struct inode *, int, uint64, uint, uint);
 int writei(struct inode *, int, uint64, uint, uint);
 void itrunc(struct inode *);
 int dirls(struct inode *);
+int dirunlink(struct inode *dp, char *name);
 #endif //!__FS_H__

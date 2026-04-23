@@ -18,5 +18,6 @@ int copyin(pagetable_t, char *, uint64, uint64);
 int copyinstr(pagetable_t, char *, uint64, uint64);
 int either_copyout(int, uint64, char *, uint64);
 int either_copyin(int, uint64, char *, uint64);
+pte_t *walk(pagetable_t, uint64 , int);
 
 #endif // VM_H

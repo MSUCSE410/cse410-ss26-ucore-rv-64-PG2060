@@ -4,6 +4,8 @@
 #include "trap.h"
 #include "vm.h"
 #include "queue.h"
+#include "timer.h"
+
 
 struct proc pool[NPROC];
 __attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
@@ -13,6 +15,7 @@ extern char boot_stack_top[];
 struct proc *current_proc;
 struct proc idle;
 struct queue task_queue;
+
 
 int threadid()
 {
@@ -96,6 +99,16 @@ found:
 	memset((void *)p->files, 0, sizeof(struct file *) * FD_BUFFER_SIZE);
 	p->context.ra = (uint64)usertrapret;
 	p->context.sp = p->kstack + KSTACK_SIZE;
+
+	for (int j = 0; j < MAX_SYSCALL_NUM; j++) {
+		p->syscall_times[j] = 0;
+	}
+	p->start_cycle = 0;
+
+	p->stride = 0;
+	p->priority = 16;
+	p->pass = BIG_STRIDE / 16;
+
 	return p;
 }
 
@@ -117,29 +130,32 @@ int init_stdio(struct proc *p)
 //    via swtch back to the scheduler.
 void scheduler()
 {
-	struct proc *p;
+		struct proc *p;
+	struct proc *choosen_p;
+	// brute forcing to find smallest stride
 	for (;;) {
-		/*int has_proc = 0;
+		choosen_p = NULL;
 		for (p = pool; p < &pool[NPROC]; p++) {
 			if (p->state == RUNNABLE) {
-				has_proc = 1;
-				tracef("swtich to proc %d", p - pool);
-				p->state = RUNNING;
-				current_proc = p;
-				swtch(&idle.context, &p->context);
+				if (choosen_p == NULL || p->stride < choosen_p->stride)
+					choosen_p = p;
 			}
 		}
-		if(has_proc == 0) {
-			panic("all app are over!\n");
-		}*/
-		p = fetch_task();
-		if (p == NULL) {
-			panic("all app are over!\n");
+		if (choosen_p == NULL) {
+			panic("All apps are over!");
 		}
-		tracef("swtich to proc %d", p - pool);
-		p->state = RUNNING;
-		current_proc = p;
-		swtch(&idle.context, &p->context);
+
+		choosen_p->stride += choosen_p->pass; 
+
+		// if this is proc first run, this records start time
+		if (choosen_p->start_cycle == 0)
+			choosen_p->start_cycle = get_cycle();
+
+
+		choosen_p->state = RUNNING;
+		current_proc = choosen_p;
+		swtch(&idle.context, &choosen_p->context);
+
 	}
 }
 
@@ -162,7 +178,7 @@ void sched()
 void yield()
 {
 	current_proc->state = RUNNABLE;
-	add_task(current_proc);
+	//add_task(current_proc);
 	sched();
 }
 
@@ -178,11 +194,12 @@ void freepagetable(pagetable_t pagetable, uint64 max_page)
 void freeproc(struct proc *p)
 {
 	if (p->pagetable)
-		freepagetable(p->pagetable, p->max_page);
+		freepagetable(p->pagetable, p->max_page); 
 	p->pagetable = 0;
-	for (int i = 0; i > FD_BUFFER_SIZE; i++) {
+	for (int i = 0; i > FD_BUFFER_SIZE; i++) { // poss error
 		if (p->files[i] != NULL) {
 			fileclose(p->files[i]);
+			p->files[i] = NULL;
 		}
 	}
 	p->state = UNUSED;
@@ -216,7 +233,7 @@ int fork()
 	np->trapframe->a0 = 0;
 	np->parent = p;
 	np->state = RUNNABLE;
-	add_task(np);
+	//add_task(np);
 	return np->pid;
 }
 
@@ -266,6 +283,7 @@ int exec(char *path, char **argv)
 		return -1;
 	}
 	uvmunmap(p->pagetable, 0, p->max_page, 1);
+	p->max_page = 0;
 	bin_loader(ip, p);
 	iput(ip);
 	return push_argv(p, argv);
@@ -297,7 +315,7 @@ int wait(int pid, int *code)
 			return -1;
 		}
 		p->state = RUNNABLE;
-		add_task(p);
+		//add_task(p);
 		sched();
 	}
 }
@@ -335,4 +353,27 @@ int fdalloc(struct file *f)
 		}
 	}
 	return -1;
+}
+
+int spawn(char *name){
+	struct inode *ip;
+
+	if ((ip = namei(name)) == 0)
+		return -1;
+	struct proc *np = allocproc(); // allocates fresg proc
+	if (np == NULL){
+		iput(ip);
+		return -1;
+	}
+	
+	init_stdio(np);
+	np->parent = curr_proc();
+	bin_loader(ip, np);
+	iput(ip);
+	char *argv[2];
+	argv[0] = name;
+	argv[1] = NULL;
+	np->trapframe->a0 = push_argv(np, argv);
+	//add_task(np); // adding to scheduler q
+	return np->pid;
 }
