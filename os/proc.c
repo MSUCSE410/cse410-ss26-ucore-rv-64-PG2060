@@ -5,8 +5,6 @@
 #include "vm.h"
 #include "queue.h"
 #include "timer.h"
-#include <stdint.h>
-
 struct proc pool[NPROC];
 __attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
 __attribute__((aligned(4096))) char trapframe[NPROC][TRAP_PAGE_SIZE];
@@ -118,7 +116,7 @@ void scheduler()
 		choosen_p = NULL;
 		for (p = pool; p < &pool[NPROC]; p++) {
 			if (p->state == RUNNABLE) {
-				if (choosen_p == NULL || (int64_t)(p->stride - choosen_p->stride) < 0)
+				if (choosen_p == NULL || (long)(p->stride - choosen_p->stride) < 0)
 					choosen_p = p;
 			}
 		}
@@ -230,10 +228,13 @@ int wait(int pid, int *code)
 				havekids = 1;
 				if (np->state == ZOMBIE) {
 					// Found one.
-					np->state = UNUSED;
-					pid = np->pid;
+					int reap_pid = np->pid;
 					*code = np->exit_code;
-					return pid;
+					//np->state = UNUSED;
+					//pid = np->pid;
+					//*code = np->exit_code;
+					freeproc(np);
+					return reap_pid;
 				}
 			}
 		}
