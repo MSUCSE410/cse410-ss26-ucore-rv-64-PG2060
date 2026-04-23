@@ -121,8 +121,8 @@ void scheduler()
 					choosen_p = p;
 			}
 		}
-		if(choosen_p == NULL) {
-			continue;
+		if (choosen_p == NULL) {
+			panic("All apps are over!");
 		}
 
 		choosen_p->stride += choosen_p->pass; 
@@ -198,7 +198,7 @@ int fork()
 	np->trapframe->a0 = 0;
 	np->parent = p;
 	np->state = RUNNABLE;
-	add_task(np);
+	//add_task(np);
 	return np->pid;
 }
 
@@ -272,7 +272,9 @@ int spawn(char *name){
 		return -1;
 
 	struct proc *np = allocproc(); // allocates fresg proc
-
+	if (np == NULL)
+		return -1;
+	
 	np->parent = curr_proc();
 
 	// loads program to new process and sets up fresh pt, epc, etc
@@ -281,7 +283,7 @@ int spawn(char *name){
 		return -1;
 	}
 
-	add_task(np); // adding to scheduler q
+	//add_task(np); // adding to scheduler q
 
 	return np->pid;
 }
