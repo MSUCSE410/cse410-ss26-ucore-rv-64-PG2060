@@ -122,19 +122,17 @@ void scheduler()
 			}
 		}
 		if(choosen_p == NULL) {
-			panic("all app are over!\n");
+			continue;
 		}
 
 		choosen_p->stride += choosen_p->pass; 
 
-		tracef("swtich to proc %d (priority=%lld, stride=%lld)", choosen_p - pool,
-		choosen_p->priority, choosen_p->stride);
-		choosen_p->state = RUNNING;
-		
 		// if this is proc first run, this records start time
 		if (choosen_p->start_cycle == 0)
 			choosen_p->start_cycle = get_cycle();
 
+
+		choosen_p->state = RUNNING;
 		current_proc = choosen_p;
 		swtch(&idle.context, &choosen_p->context);
 	}
@@ -159,7 +157,7 @@ void sched()
 void yield()
 {
 	current_proc->state = RUNNABLE;
-	//add_task(current_proc);
+	// add_task(current_proc);
 	// not needed since we're not using q but scanning the pool directly
 	sched();
 }
