@@ -6,7 +6,9 @@
 #include "queue.h"
 
 #define NPROC (512)
+#define MAX_SYSCALL_NUM (500)
 #define FD_BUFFER_SIZE (16)
+#define BIG_STRIDE 65536
 
 struct file;
 
@@ -32,6 +34,19 @@ struct context {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+typedef enum{
+	UnInit,
+	Ready,
+	Running,
+	Exited
+} TaskStatus;
+
+typedef struct {
+	TaskStatus status;
+	unsigned int syscall_times[MAX_SYSCALL_NUM];
+	int time;
+} TaskInfo;
+
 // Per-process state
 struct proc {
 	enum procstate state; // Process state
@@ -42,6 +57,14 @@ struct proc {
 	struct trapframe *trapframe; // data page for trampoline.S
 	struct context context; // swtch() here to run process
 	uint64 max_page;
+
+	unsigned int syscall_times[MAX_SYSCALL_NUM];
+	uint64 start_cycle;
+
+	uint64 stride; // length of process ran so far
+	uint64 pass; // finds out stride increase whenever it is scheduled
+	long long priority; // proc priority
+
 	struct proc *parent; // Parent process
 	uint64 exit_code;
 	struct file *files[FD_BUFFER_SIZE];
@@ -63,5 +86,6 @@ struct proc *allocproc();
 int fdalloc(struct file *);
 // swtch.S
 void swtch(struct context *, struct context *);
+int spawn(char *name);
 
 #endif // PROC_H

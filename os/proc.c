@@ -4,6 +4,7 @@
 #include "trap.h"
 #include "vm.h"
 #include "queue.h"
+#include "timer.h"
 
 struct proc pool[NPROC];
 __attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
@@ -89,6 +90,16 @@ found:
 	memset((void *)p->trapframe, 0, TRAP_PAGE_SIZE);
 	p->context.ra = (uint64)usertrapret;
 	p->context.sp = p->kstack + KSTACK_SIZE;
+
+	for (int j = 0; j < MAX_SYSCALL_NUM; j++) {
+		p->syscall_times[j] = 0;
+	}
+	p->start_cycle = 0;
+
+	p->stride = 0;
+	p->priority = 16;
+	p->pass = BIG_STRIDE / 16;
+
 	return p;
 }
 
@@ -100,28 +111,32 @@ found:
 void scheduler()
 {
 	struct proc *p;
+	struct proc *choosen_p;
+	// brute forcing to find smallest stride
 	for (;;) {
-		/*int has_proc = 0;
+		choosen_p = NULL;
 		for (p = pool; p < &pool[NPROC]; p++) {
 			if (p->state == RUNNABLE) {
-				has_proc = 1;
-				tracef("swtich to proc %d", p - pool);
-				p->state = RUNNING;
-				current_proc = p;
-				swtch(&idle.context, &p->context);
+				if (choosen_p == NULL || p->stride < choosen_p->stride)
+					choosen_p = p;
 			}
 		}
-		if(has_proc == 0) {
-			panic("all app are over!\n");
-		}*/
-		p = fetch_task();
-		if (p == NULL) {
+		if(choosen_p == NULL) {
 			panic("all app are over!\n");
 		}
-		tracef("swtich to proc %d", p - pool);
-		p->state = RUNNING;
-		current_proc = p;
-		swtch(&idle.context, &p->context);
+
+		choosen_p->stride += choosen_p->pass; 
+
+		tracef("swtich to proc %d (priority=%lld, stride=%lld)", choosen_p - pool,
+		choosen_p->priority, choosen_p->stride);
+		choosen_p->state = RUNNING;
+		
+		// if this is proc first run, this records start time
+		if (choosen_p->start_cycle == 0)
+			choosen_p->start_cycle = get_cycle();
+
+		current_proc = choosen_p;
+		swtch(&idle.context, &choosen_p->context);
 	}
 }
 
@@ -144,7 +159,8 @@ void sched()
 void yield()
 {
 	current_proc->state = RUNNABLE;
-	add_task(current_proc);
+	//add_task(current_proc);
+	// not needed since we're not using q but scanning the pool directly
 	sched();
 }
 
@@ -226,7 +242,7 @@ int wait(int pid, int *code)
 			return -1;
 		}
 		p->state = RUNNABLE;
-		add_task(p);
+		// add_task(p); same as yield
 		sched();
 	}
 }
@@ -250,4 +266,24 @@ void exit(int code)
 		}
 	}
 	sched();
+}
+
+int spawn(char *name){
+	int id = get_id_by_name(name); // finds app by name
+	if (id < 0)
+		return -1;
+
+	struct proc *np = allocproc(); // allocates fresg proc
+
+	np->parent = curr_proc();
+
+	// loads program to new process and sets up fresh pt, epc, etc
+	if (loader(id, np) < 0) {
+		freeproc(np);
+		return -1;
+	}
+
+	add_task(np); // adding to scheduler q
+
+	return np->pid;
 }
