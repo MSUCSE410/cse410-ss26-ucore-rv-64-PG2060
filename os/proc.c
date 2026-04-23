@@ -5,6 +5,7 @@
 #include "vm.h"
 #include "queue.h"
 #include "timer.h"
+#include <stdint.h>
 
 struct proc pool[NPROC];
 __attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
@@ -117,7 +118,7 @@ void scheduler()
 		choosen_p = NULL;
 		for (p = pool; p < &pool[NPROC]; p++) {
 			if (p->state == RUNNABLE) {
-				if (choosen_p == NULL || p->stride < choosen_p->stride)
+				if (choosen_p == NULL || (int64_t)(p->stride - choosen_p->stride) < 0)
 					choosen_p = p;
 			}
 		}
@@ -251,17 +252,21 @@ void exit(int code)
 	struct proc *p = curr_proc();
 	p->exit_code = code;
 	debugf("proc %d exit with %d\n", p->pid, code);
-	freeproc(p);
-	if (p->parent != NULL) {
-		// Parent should `wait`
-		p->state = ZOMBIE;
-	}
+	
 	// Set the `parent` of all children to NULL
 	struct proc *np;
 	for (np = pool; np < &pool[NPROC]; np++) {
 		if (np->parent == p) {
 			np->parent = NULL;
 		}
+	}
+
+	if (p->parent != NULL) {
+		// Parent should `wait`
+		p->state = ZOMBIE;
+	}
+	else{
+		freeproc(p);
 	}
 	sched();
 }
